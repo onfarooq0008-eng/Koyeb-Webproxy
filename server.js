@@ -219,7 +219,7 @@ async(req,res)=>{
             "arraybuffer",
 
 
-            maxRedirects:20,
+            maxRedirects:0,
 
 
 
@@ -245,7 +245,24 @@ async(req,res)=>{
 
         });
 
+if(
+response.status >= 300 &&
+response.status < 400 &&
+response.headers.location
+){
 
+    let redirectURL =
+    new URL(
+        response.headers.location,
+        target
+    ).href;
+
+
+    return res.redirect(
+        "/web/" + encode(redirectURL)
+    );
+
+}
 
 
 
