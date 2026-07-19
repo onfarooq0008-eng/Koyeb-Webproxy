@@ -1,53 +1,24 @@
 function cleanHeaders(){
 
-
 return {
 
+"User-Agent":
+"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
 
-    // Server browser identity
+"Accept":
+"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 
-    "User-Agent":
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+"Accept-Language":
+"en-US,en;q=0.9",
 
-
-
-    "Accept":
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-
-
-
-    "Accept-Language":
-    "en-US,en;q=0.9",
-
-
-
-
-    // Remove client information
-
-    "X-Forwarded-For":
-    "",
-
-
-    "X-Real-IP":
-    "",
-
-
-    "Client-IP":
-    "",
-
-
-    "Forwarded":
-    ""
+"Cache-Control":
+"no-cache"
 
 };
-
 
 }
 
 
-
-module.exports = {
-
+module.exports={
 cleanHeaders
-
 };
