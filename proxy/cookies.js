@@ -1,86 +1,69 @@
-const fs = require("fs");
+const fs=require("fs");
 
-const file = "./data/cookies.json";
+
+const file="./data/cookies.json";
 
 
 if(!fs.existsSync("./data")){
-    fs.mkdirSync("./data");
+fs.mkdirSync("./data");
 }
 
 
-let cookieDB = {};
+
+let database={};
 
 
 if(fs.existsSync(file)){
 
-    cookieDB =
-    JSON.parse(
-        fs.readFileSync(
-            file,
-            "utf8"
-        )
-    );
+database=
+JSON.parse(
+fs.readFileSync(file)
+);
 
 }
-
 
 
 
 function save(){
 
-    fs.writeFileSync(
-        file,
-        JSON.stringify(
-            cookieDB,
-            null,
-            2
-        )
-    );
+fs.writeFileSync(
+file,
+JSON.stringify(database,null,2)
+);
 
 }
-
 
 
 
 function getCookies(host){
 
-    return cookieDB[host] || "";
+return database[host] || "";
 
 }
 
 
 
+function setCookies(host,value){
+
+if(!value)
+return;
 
 
-function saveCookies(host,setCookies){
+database[host]=
+value
+.map(
+x=>x.split(";")[0]
+)
+.join("; ");
 
 
-    if(!setCookies)
-        return;
-
-
-
-    cookieDB[host] =
-    setCookies
-    .map(
-        c => c.split(";")[0]
-    )
-    .join("; ");
-
-
-
-    save();
+save();
 
 }
 
 
 
-
-
-module.exports = {
-
-    getCookies,
-
-    saveCookies
-
+module.exports={
+getCookies,
+setCookies
 };
