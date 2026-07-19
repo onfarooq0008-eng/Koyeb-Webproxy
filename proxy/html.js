@@ -1,59 +1,37 @@
-const cheerio = require("cheerio");
+const cheerio=require("cheerio");
 
 
-function rewriteURL(base, value, encode){
+function makeURL(base,url,encode){
 
 
-    if(!value)
-        return value;
+if(!url)
+return url;
 
 
-
-    // already proxy links
-
-    if(value.startsWith("/web/")){
-        return value;
-    }
-
-
-
-    // Ignore special links
-
-    if(
-        value.startsWith("#") ||
-        value.startsWith("javascript:") ||
-        value.startsWith("mailto:")
-    ){
-
-        return value;
-
-    }
+if(
+url.startsWith("#") ||
+url.startsWith("javascript:")
+)
+return url;
 
 
 
-
-    try{
-
-
-        let full =
-        new URL(
-            value,
-            base
-        ).href;
+try{
 
 
-
-        return "/web/" + encode(full);
-
-
-
-    }catch(e){
+let full=
+new URL(url,base)
+.href;
 
 
-        return value;
+return "/web/"+encode(full);
 
 
-    }
+}catch(e){
+
+return url;
+
+}
 
 
 }
@@ -65,205 +43,87 @@ function rewriteURL(base, value, encode){
 function rewriteHTML(html,base,encode){
 
 
-    const $ =
-    cheerio.load(html);
+const $=
+cheerio.load(html);
 
 
 
-    // Links
+$("a").each(function(){
 
-    $("a").each(function(){
+let v=$(this).attr("href");
 
+if(v)
+$(this).attr(
+"href",
+makeURL(base,v,encode)
+);
 
-        let href =
-        $(this).attr("href");
+});
 
 
-        if(href){
 
-            $(this).attr(
-                "href",
-                rewriteURL(
-                    base,
-                    href,
-                    encode
-                )
-            );
+$("img").each(function(){
 
-        }
+let v=$(this).attr("src");
 
+if(v)
+$(this).attr(
+"src",
+makeURL(base,v,encode)
+);
 
-    });
+});
 
 
 
+$("script").each(function(){
 
+let v=$(this).attr("src");
 
-    // Forms
+if(v)
+$(this).attr(
+"src",
+makeURL(base,v,encode)
+);
 
-    $("form").each(function(){
+});
 
 
-        let action =
-        $(this).attr("action");
 
+$("link").each(function(){
 
+let v=$(this).attr("href");
 
-        if(action){
+if(v)
+$(this).attr(
+"href",
+makeURL(base,v,encode)
+);
 
-            $(this).attr(
-                "action",
-                rewriteURL(
-                    base,
-                    action,
-                    encode
-                )
-            );
+});
 
 
-        }
 
+$("form").each(function(){
 
-    });
+let v=$(this).attr("action");
 
+if(v)
+$(this).attr(
+"action",
+makeURL(base,v,encode)
+);
 
+});
 
 
 
-
-
-    // Images
-
-    $("img").each(function(){
-
-
-        let src =
-        $(this).attr("src");
-
-
-        if(src){
-
-            $(this).attr(
-                "src",
-                rewriteURL(
-                    base,
-                    src,
-                    encode
-                )
-            );
-
-        }
-
-
-    });
-
-
-
-
-
-
-
-    // JavaScript files
-
-    $("script").each(function(){
-
-
-        let src =
-        $(this).attr("src");
-
-
-
-        if(src){
-
-            $(this).attr(
-                "src",
-                rewriteURL(
-                    base,
-                    src,
-                    encode
-                )
-            );
-
-        }
-
-
-    });
-
-
-
-
-
-
-
-    // CSS files
-
-    $("link").each(function(){
-
-
-        let href =
-        $(this).attr("href");
-
-
-
-        if(href){
-
-            $(this).attr(
-                "href",
-                rewriteURL(
-                    base,
-                    href,
-                    encode
-                )
-            );
-
-        }
-
-
-    });
-
-
-
-
-
-
-
-    // Video sources
-
-    $("video").each(function(){
-
-
-        let src =
-        $(this).attr("src");
-
-
-
-        if(src){
-
-            $(this).attr(
-                "src",
-                rewriteURL(
-                    base,
-                    src,
-                    encode
-                )
-            );
-
-        }
-
-
-    });
-
-
-
-
-    return $.html();
+return $.html();
 
 }
 
 
 
-module.exports = {
-
+module.exports={
 rewriteHTML
-
 };
