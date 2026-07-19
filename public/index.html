@@ -5,7 +5,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>Koyeb Web Proxy</title>
+<title>Koyeb WebProxy Pro</title>
 
 <link rel="stylesheet" href="style.css">
 
@@ -15,21 +15,21 @@
 <body>
 
 
-<div class="container">
+<div class="card">
 
 
-<div class="logo">
+<div class="icon">
 🌐
 </div>
 
 
 <h1>
-Koyeb Web Proxy
+Koyeb WebProxy Pro
 </h1>
 
 
 <p>
-Browse websites through our secure proxy server
+Browse websites through a secure proxy server
 </p>
 
 
@@ -38,10 +38,10 @@ Browse websites through our secure proxy server
 
 
 <input
-id="url"
+type="url"
 name="url"
 placeholder="Enter website URL"
-autocomplete="off"
+required
 >
 
 
@@ -58,22 +58,22 @@ Open Website
 
 
 <div>
-⚡ Fast browsing
+⚡ Fast Proxy
 </div>
 
 
 <div>
-🔒 Server IP protection
+🔒 Server IP Routing
 </div>
 
 
 <div>
-🍪 Cookie support
+🍪 Cookie Support
 </div>
 
 
 <div>
-🎬 Media streaming
+🎬 Stream Support
 </div>
 
 
@@ -82,43 +82,6 @@ Open Website
 
 
 </div>
-
-
-
-<script>
-
-document.querySelector("form")
-.addEventListener("submit",function(e){
-
-
-let input =
-document.getElementById("url");
-
-
-let url =
-input.value.trim();
-
-
-
-if(url===""){
-    e.preventDefault();
-    alert("Enter website URL");
-}
-
-
-if(
-!url.startsWith("http")
-){
-    input.value =
-    "https://" + url;
-}
-
-
-
-});
-
-
-</script>
 
 
 
