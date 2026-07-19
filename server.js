@@ -1,41 +1,15 @@
+require("events").EventEmitter.defaultMaxListeners = 50;
 const express = require("express");
 const compression = require("compression");
-const NodeCache = require("node-cache");
-const { CookieJar } = require("tough-cookie");
-const { createProxyMiddleware } = require("http-proxy-middleware");
-const crypto = require("crypto");
 const fs = require("fs");
+const crypto = require("crypto");
+const { createProxyMiddleware } = require("http-proxy-middleware");
 
 const app = express();
 
+app.set("trust proxy", false);
+
 const PORT = 8000;
-
-// cache
-const cache = new NodeCache({
-    stdTTL: 300,
-    checkperiod: 600
-});
-
-// cookie storage
-const cookieFile = "./data/cookies.json";
-
-let cookies = {};
-
-if (fs.existsSync(cookieFile)) {
-    cookies = JSON.parse(
-        fs.readFileSync(cookieFile)
-    );
-}
-
-
-function saveCookies(){
-
-    fs.writeFileSync(
-        cookieFile,
-        JSON.stringify(cookies,null,2)
-    );
-
-}
 
 
 app.use(compression());
@@ -43,184 +17,177 @@ app.use(compression());
 app.use(express.static("public"));
 
 
-// Home page
-app.get("/",(req,res)=>{
+const cookieFile="./data/cookies.json";
 
-    res.sendFile(
-        __dirname + "/public/index.html"
+let cookies={};
+
+
+if(fs.existsSync(cookieFile)){
+    cookies=JSON.parse(
+        fs.readFileSync(cookieFile)
     );
-
-});
-
+}
 
 
-// Proxy start
+function saveCookies(){
+    fs.writeFileSync(
+        cookieFile,
+        JSON.stringify(cookies)
+    );
+}
+
+
+// Start proxy
 app.get("/proxy",(req,res)=>{
 
     let url=req.query.url;
 
-
-    if(!url){
-        return res.send("No URL");
-    }
+    if(!url)
+        return res.send("Missing URL");
 
 
-    if(!url.startsWith("http")){
+    if(!url.startsWith("http"))
         url="https://"+url;
-    }
+
+
+    let encoded =
+    Buffer.from(url).toString("base64");
 
 
     res.redirect(
-        "/browse?url="+encodeURIComponent(url)
+        "/browse/"+encoded
     );
 
 });
 
 
 
-// Browser proxy
+// Main proxy
 
-app.use("/browse",(req,res,next)=>{
+app.use(
+"/browse/:target/*?",
+(req,res,next)=>{
 
 
-    let target=req.query.url;
+let encoded=req.params.target;
 
 
-    if(!target){
-        return res.status(400)
-        .send("Missing URL");
-    }
+let target =
+Buffer.from(
+encoded,
+"base64"
+).toString();
 
 
+let urlObj =
+new URL(target);
 
-    let cacheKey =
-    crypto
-    .createHash("md5")
-    .update(target)
-    .digest("hex");
 
 
+let proxy =
+createProxyMiddleware({
 
-    const proxy =
-    createProxyMiddleware({
+target:
+urlObj.origin,
 
-        target:target,
 
-        changeOrigin:true,
+changeOrigin:true,
 
-        secure:false,
+secure:false,
 
-        followRedirects:true,
 
+pathRewrite(path){
 
-        selfHandleResponse:false,
+let newPath =
+path.replace(
+"/browse/"+encoded,
+""
+);
 
 
-        headers:{
+return newPath || "/";
 
+},
 
-            // hide mobile headers
 
-            "user-agent":
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
 
+onProxyReq(proxyReq){
 
-            "accept-language":
-            "en-US,en;q=0.9",
 
 
-            "x-forwarded-for":
-            "",
+let host=urlObj.hostname;
 
 
-            "x-real-ip":
-            "",
 
+if(cookies[host]){
 
-            "client-ip":
-            ""
+proxyReq.setHeader(
+"cookie",
+cookies[host]
+);
 
-        },
+}
 
 
 
-        onProxyReq(proxyReq,req){
+proxyReq.setHeader(
+"user-agent",
+"Mozilla/5.0 (X11; Linux x86_64) Chrome/120 Safari/537.36"
+);
 
 
-            // send stored cookies
 
-            let host =
-            new URL(target).hostname;
+proxyReq.removeHeader(
+"x-forwarded-for"
+);
 
+proxyReq.removeHeader(
+"x-real-ip"
+);
 
-            if(cookies[host]){
 
-                proxyReq.setHeader(
-                    "cookie",
-                    cookies[host]
-                );
 
-            }
+},
 
 
-            // remove identifying headers
 
-            proxyReq.removeHeader(
-                "referer"
-            );
+onProxyRes(proxyRes){
 
-            proxyReq.removeHeader(
-                "origin"
-            );
 
+let host=urlObj.hostname;
 
-        },
 
+let setCookie =
+proxyRes.headers["set-cookie"];
 
 
-        onProxyRes(proxyRes){
+if(setCookie){
 
+cookies[host]=
+setCookie
+.map(
+c=>c.split(";")[0]
+)
+.join("; ");
 
-            let setCookie =
-            proxyRes.headers[
-                "set-cookie"
-            ];
 
+saveCookies();
 
-            if(setCookie){
+}
 
 
-                let host =
-                new URL(target)
-                .hostname;
 
+proxyRes.headers[
+"accept-ranges"
+]="bytes";
 
-                cookies[host] =
-                setCookie
-                .map(x=>x.split(";")[0])
-                .join("; ");
 
+}
 
-                saveCookies();
+});
 
-            }
 
-
-
-            // allow video streaming
-
-            proxyRes.headers[
-                "accept-ranges"
-            ]="bytes";
-
-
-        }
-
-
-    });
-
-
-    proxy(req,res,next);
+proxy(req,res,next);
 
 
 });
@@ -230,7 +197,7 @@ app.use("/browse",(req,res,next)=>{
 app.listen(PORT,()=>{
 
 console.log(
-"Proxy running on port "+PORT
+"Proxy running on "+PORT
 );
 
 });
