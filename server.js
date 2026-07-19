@@ -219,7 +219,7 @@ async(req,res)=>{
             "arraybuffer",
 
 
-            maxRedirects:5,
+            maxRedirects:20,
 
 
 
