@@ -2,100 +2,167 @@ require("events").EventEmitter.defaultMaxListeners = 50;
 
 const express = require("express");
 const compression = require("compression");
+const axios = require("axios");
+const cheerio = require("cheerio");
 const fs = require("fs");
-const crypto = require("crypto");
-const { createProxyMiddleware } = require("http-proxy-middleware");
+const path = require("path");
 
 const app = express();
 
 const PORT = 8000;
 
-app.set("trust proxy", false);
 
 app.use(compression());
 
 app.use(express.static("public"));
 
 
-const cookieFile = "./data/cookies.json";
+const dataDir="./data";
+const cookieFile="./data/cookies.json";
 
-let cookies = {};
 
-if (fs.existsSync(cookieFile)) {
-    cookies = JSON.parse(
-        fs.readFileSync(cookieFile, "utf8")
+if(!fs.existsSync(dataDir)){
+    fs.mkdirSync(dataDir);
+}
+
+
+let cookies={};
+
+
+if(fs.existsSync(cookieFile)){
+    cookies=JSON.parse(
+        fs.readFileSync(cookieFile,"utf8")
     );
 }
 
 
-function saveCookies() {
-
+function saveCookies(){
     fs.writeFileSync(
         cookieFile,
-        JSON.stringify(cookies, null, 2)
+        JSON.stringify(cookies,null,2)
     );
+}
+
+
+
+function encodeURL(url){
+
+    return Buffer
+    .from(url)
+    .toString("base64");
+
+}
+
+
+function decodeURL(url){
+
+    return Buffer
+    .from(url,"base64")
+    .toString();
 
 }
 
 
 
-// Home
-app.get("/", (req, res) => {
+function rewriteURL(base,value){
+
+    if(!value) return value;
+
+
+    if(
+        value.startsWith("http") ||
+        value.startsWith("data:")
+    ){
+
+        return "/browse/" + encodeURL(value);
+
+    }
+
+
+    if(value.startsWith("//")){
+
+        return "/browse/" + 
+        encodeURL("https:"+value);
+
+    }
+
+
+    try{
+
+        let full =
+        new URL(value,base)
+        .href;
+
+
+        return "/browse/" + encodeURL(full);
+
+
+    }catch{
+
+        return value;
+
+    }
+
+}
+
+
+
+
+app.get("/",(req,res)=>{
 
     res.sendFile(
-        __dirname + "/public/index.html"
+        path.join(
+            __dirname,
+            "public/index.html"
+        )
     );
 
 });
 
 
 
-// Start proxy
-app.get("/proxy", (req, res) => {
-
-    let url = req.query.url;
 
 
-    if (!url) {
+app.get("/proxy",(req,res)=>{
+
+
+    let url=req.query.url;
+
+
+    if(!url)
         return res.send("Missing URL");
-    }
 
 
-    if (!url.startsWith("http")) {
-        url = "https://" + url;
-    }
-
-
-    const encoded = Buffer
-        .from(url)
-        .toString("base64");
+    if(!url.startsWith("http"))
+        url="https://"+url;
 
 
     res.redirect(
-        "/browse/" + encoded
+        "/browse/"+encodeURL(url)
     );
+
 
 });
 
 
 
 
-// Proxy handler
-app.use("/browse/:target", (req, res, next) => {
 
 
-    let encoded = req.params.target;
+
+app.use("/browse/:encoded",async(req,res)=>{
 
 
     let target;
 
-    try {
 
-        target = Buffer
-            .from(encoded, "base64")
-            .toString();
+    try{
 
-    } catch(e){
+        target=
+        decodeURL(req.params.encoded);
+
+
+    }catch{
 
         return res.status(400)
         .send("Invalid URL");
@@ -104,156 +171,192 @@ app.use("/browse/:target", (req, res, next) => {
 
 
 
-    let parsed;
+    try{
 
 
-    try {
-
-        parsed = new URL(target);
-
-    } catch(e){
-
-        return res.status(400)
-        .send("Bad URL");
-
-    }
+        let host =
+        new URL(target).hostname;
 
 
 
-    const host = parsed.hostname;
+        let response =
+        await axios.get(target,{
+
+            responseType:"arraybuffer",
+
+            maxRedirects:5,
 
 
-
-    const proxy = createProxyMiddleware({
-
-        target: parsed.origin,
-
-        changeOrigin: true,
-
-        secure: false,
-
-        followRedirects: true,
+            headers:{
 
 
-        pathRewrite: function(path, req) {
+                "User-Agent":
+                "Mozilla/5.0 (X11; Linux x86_64) Chrome/120 Safari/537.36",
 
 
-            let original =
-            req.originalUrl;
+                "Cookie":
+                cookies[host] || ""
 
+            },
 
-            let remove =
-            "/browse/" + encoded;
-
-
-            let newPath =
-            original.replace(remove,"");
-
-
-            if(newPath === ""){
-                newPath="/";
+            validateStatus(){
+                return true;
             }
 
-
-            return newPath;
-
-        },
+        });
 
 
 
-        onProxyReq(proxyReq){
-
-
-            // Fake desktop browser
-
-            proxyReq.setHeader(
-                "user-agent",
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-            );
-
-
-            proxyReq.removeHeader(
-                "x-forwarded-for"
-            );
-
-
-            proxyReq.removeHeader(
-                "x-real-ip"
-            );
-
-
-            proxyReq.removeHeader(
-                "client-ip"
-            );
-
-
-            proxyReq.removeHeader(
-                "referer"
-            );
-
-
-            proxyReq.removeHeader(
-                "origin"
-            );
+        let setCookie =
+        response.headers["set-cookie"];
 
 
 
-            // Send stored cookies
+        if(setCookie){
 
-            if(cookies[host]){
+            cookies[host]=
+            setCookie
+            .map(x=>x.split(";")[0])
+            .join("; ");
 
-                proxyReq.setHeader(
-                    "cookie",
-                    cookies[host]
+
+            saveCookies();
+
+        }
+
+
+
+
+        let contentType =
+        response.headers["content-type"] || "";
+
+
+
+
+        // HTML rewrite
+
+        if(contentType.includes("text/html")){
+
+
+            let html =
+            response.data.toString();
+
+
+            const $ =
+            cheerio.load(html);
+
+
+
+            $("a").each(function(){
+
+                let href=$(this).attr("href");
+
+                $(this).attr(
+                    "href",
+                    rewriteURL(target,href)
                 );
 
-            }
-
-
-        },
+            });
 
 
 
-        onProxyRes(proxyRes){
+            $("form").each(function(){
 
+                let action=$(this).attr("action");
 
-            // Save cookies
+                $(this).attr(
+                    "action",
+                    rewriteURL(target,action)
+                );
 
-            let setCookie =
-            proxyRes.headers["set-cookie"];
+                $(this).attr(
+                    "method",
+                    "GET"
+                );
 
-
-            if(setCookie){
-
-
-                cookies[host] =
-                setCookie
-                .map(
-                    c => c.split(";")[0]
-                )
-                .join("; ");
-
-
-                saveCookies();
-
-            }
+            });
 
 
 
-            // Video streaming support
+            $("img").each(function(){
 
-            proxyRes.headers[
-                "accept-ranges"
-            ] = "bytes";
+                let src=$(this).attr("src");
+
+                $(this).attr(
+                    "src",
+                    rewriteURL(target,src)
+                );
+
+            });
+
+
+
+            $("script").each(function(){
+
+                let src=$(this).attr("src");
+
+                if(src){
+
+                    $(this).attr(
+                        "src",
+                        rewriteURL(target,src)
+                    );
+
+                }
+
+            });
+
+
+
+            $("link").each(function(){
+
+                let href=$(this).attr("href");
+
+                $(this).attr(
+                    "href",
+                    rewriteURL(target,href)
+                );
+
+            });
+
+
+
+            res.set(
+                "content-type",
+                "text/html"
+            );
+
+
+            return res.send(
+                $.html()
+            );
 
 
         }
 
 
-    });
+
+        // Images, videos, files streaming
+
+        res.set(
+            "content-type",
+            contentType
+        );
 
 
-    proxy(req,res,next);
+        res.send(response.data);
+
+
+
+    }catch(err){
+
+        console.log(err.message);
+
+        res.status(500)
+        .send("Proxy error");
+
+    }
+
 
 
 });
@@ -264,8 +367,8 @@ app.use("/browse/:target", (req, res, next) => {
 
 app.listen(PORT,()=>{
 
-    console.log(
-        "Proxy running on port " + PORT
-    );
+console.log(
+"HTML Proxy running on port "+PORT
+);
 
 });
