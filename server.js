@@ -69,6 +69,21 @@ function decode(url){
 
 
 // Main proxy route
+app.get("/proxy",(req,res)=>{
+
+let url=req.query.url;
+
+if(!url)
+return res.send("Missing URL");
+
+if(!url.startsWith("http"))
+url="https://"+url;
+
+res.redirect(
+"/web/"+encode(url)
+);
+
+});
 
 app.use("/web/:url",async(req,res)=>{
 
