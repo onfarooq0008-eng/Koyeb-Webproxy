@@ -4,19 +4,15 @@ const express = require("express");
 const compression = require("compression");
 const axios = require("axios");
 const path = require("path");
-
-const {
-    getCookies,
-    saveCookies
-} = require("./proxy/cookies");
-
-const {
-    cleanHeaders
-} = require("./proxy/headers");
+const fs = require("fs");
 
 const {
     rewriteHTML
 } = require("./proxy/html");
+
+const {
+    cleanHeaders
+} = require("./proxy/headers");
 
 
 const app = express();
@@ -29,6 +25,71 @@ app.use(compression());
 app.use(express.static("public"));
 
 
+
+// Cookie database
+
+const cookieFile =
+"./data/cookies.json";
+
+
+if(!fs.existsSync("./data")){
+    fs.mkdirSync("./data");
+}
+
+
+let cookies={};
+
+
+if(fs.existsSync(cookieFile)){
+
+    cookies =
+    JSON.parse(
+        fs.readFileSync(cookieFile)
+    );
+
+}
+
+
+
+function saveCookies(){
+
+    fs.writeFileSync(
+        cookieFile,
+        JSON.stringify(
+            cookies,
+            null,
+            2
+        )
+    );
+
+}
+
+
+
+
+
+function encode(url){
+
+    return Buffer
+    .from(url)
+    .toString("base64");
+
+}
+
+
+function decode(url){
+
+    return Buffer
+    .from(url,"base64")
+    .toString();
+
+}
+
+
+
+
+
+// Homepage
 
 app.get("/",(req,res)=>{
 
@@ -45,47 +106,54 @@ app.get("/",(req,res)=>{
 
 
 
-function encode(url){
 
-    return Buffer
-    .from(url)
-    .toString("base64");
+// Start proxy
 
-}
-
-
-
-function decode(url){
-
-    return Buffer
-    .from(url,"base64")
-    .toString();
-
-}
-
-
-
-
-
-
-// Main proxy route
 app.get("/proxy",(req,res)=>{
 
-let url=req.query.url;
 
-if(!url)
-return res.send("Missing URL");
+    let url =
+    req.query.url;
 
-if(!url.startsWith("http"))
-url="https://"+url;
 
-res.redirect(
-"/web/"+encode(url)
-);
+    if(!url){
+
+        return res.send(
+            "Missing URL"
+        );
+
+    }
+
+
+
+    if(!url.startsWith("http")){
+
+        url =
+        "https://" + url;
+
+    }
+
+
+
+    res.redirect(
+        "/web/" + encode(url)
+    );
+
 
 });
 
-app.use("/web/:url",async(req,res)=>{
+
+
+
+
+
+
+
+
+// Main web proxy
+
+app.use("/web/:target",
+async(req,res)=>{
 
 
     let target;
@@ -94,12 +162,36 @@ app.use("/web/:url",async(req,res)=>{
     try{
 
         target =
-        decode(req.params.url);
+        decode(
+            req.params.target
+        );
+
+    }
+    catch(e){
+
+        return res
+        .status(400)
+        .send("Invalid URL");
+
+    }
 
 
-    }catch(e){
 
-        return res.status(400)
+
+
+    let parsed;
+
+
+    try{
+
+        parsed =
+        new URL(target);
+
+    }
+    catch(e){
+
+        return res
+        .status(400)
         .send("Bad URL");
 
     }
@@ -107,24 +199,12 @@ app.use("/web/:url",async(req,res)=>{
 
 
 
-    if(!target.startsWith("http")){
-
-        target =
-        "https://" + target;
-
-    }
-
-
+    let host =
+    parsed.hostname;
 
 
 
     try{
-
-
-        let host =
-        new URL(target).hostname;
-
-
 
 
         let response =
@@ -135,24 +215,31 @@ app.use("/web/:url",async(req,res)=>{
             method:req.method,
 
 
-            responseType:"arraybuffer",
+            responseType:
+            "arraybuffer",
 
 
             maxRedirects:5,
 
 
+
             headers:{
+
 
                 ...cleanHeaders(),
 
+
                 Cookie:
-                getCookies(host)
+                cookies[host] || ""
+
 
             },
 
 
             validateStatus(){
+
                 return true;
+
             }
 
 
@@ -165,12 +252,20 @@ app.use("/web/:url",async(req,res)=>{
 
         // Save cookies
 
-        if(response.headers["set-cookie"]){
+        if(
+        response.headers["set-cookie"]
+        ){
 
-            saveCookies(
-                host,
-                response.headers["set-cookie"]
-            );
+
+            cookies[host] =
+            response.headers["set-cookie"]
+            .map(
+                c=>c.split(";")[0]
+            )
+            .join("; ");
+
+
+            saveCookies();
 
         }
 
@@ -179,21 +274,27 @@ app.use("/web/:url",async(req,res)=>{
 
 
 
-        let content =
-        response.headers["content-type"] || "";
+        let type =
+        response.headers[
+            "content-type"
+        ] || "";
 
 
 
 
 
-        // HTML pages
 
-        if(content.includes("text/html")){
+
+        // HTML processing
+
+        if(
+        type.includes("text/html")
+        ){
 
 
             let html =
-            response.data.toString();
-
+            response.data
+            .toString();
 
 
             html =
@@ -202,7 +303,6 @@ app.use("/web/:url",async(req,res)=>{
                 target,
                 encode
             );
-
 
 
             res.setHeader(
@@ -221,15 +321,17 @@ app.use("/web/:url",async(req,res)=>{
 
 
 
-        // Images, videos, files
+        // Files / images / video
 
         res.setHeader(
             "content-type",
-            content
+            type
         );
 
 
-        if(response.headers["content-length"]){
+        if(
+        response.headers["content-length"]
+        ){
 
             res.setHeader(
                 "content-length",
@@ -247,8 +349,8 @@ app.use("/web/:url",async(req,res)=>{
 
 
 
-
-    }catch(err){
+    }
+    catch(err){
 
 
         console.log(
@@ -258,7 +360,7 @@ app.use("/web/:url",async(req,res)=>{
 
         res.status(500)
         .send(
-            "Proxy failed"
+            "Proxy error"
         );
 
 
@@ -277,8 +379,8 @@ app.use("/web/:url",async(req,res)=>{
 app.listen(PORT,()=>{
 
 console.log(
-"Web Proxy running on port "+PORT
+"🚀 Koyeb WebProxy Pro running on port "
++PORT
 );
-
 
 });
